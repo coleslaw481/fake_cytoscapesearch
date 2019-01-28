@@ -1,0 +1,12 @@
+<VirtualHost *:80>
+    ServerName localhost
+
+    WSGIDaemonProcess fake_cytoscapesearch user=apache group=apache threads=5
+    WSGIScriptAlias /fake_cytoscapesearch/rest/v1 /var/www/fake_cytoscapesearch_rest/fake_cytoscapesearch.wsgi
+
+    <Directory /var/www/fake_cytoscapesearch_rest>
+        WSGIProcessGroup fake_cytoscapesearch
+        WSGIApplicationGroup %{GLOBAL}
+        Require all granted
+    </Directory>
+</VirtualHost>
