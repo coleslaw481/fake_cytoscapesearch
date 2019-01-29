@@ -18,7 +18,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 
-desc = """Fake cytoscape search service
+desc = """Fake cytoscape integrated search service
  
  # THIS IS A FAKE SERVICE WITH RANDOM RESULTS YOU HAVE BEEN WARNED!!!!!
 
@@ -122,9 +122,9 @@ class RunSearchQuery(Resource):
     resource_fields = api.model('Query', {
         'geneList': fields.List(fields.String, description='List of genes',
                                 example=['brca1'], required=True),
-        'databaseList': fields.List(fields.String,
-                                    description='List of databases',
-                                    example=['enrichment:signor', 'interactome', 'keyword'], default=['enrichment:signor'])
+        'sourceList': fields.List(fields.String,
+                                    description='List of sources',
+                                    example=['enrichment', 'interactome', 'keyword'], default=['enrichment'])
     })
 
     @api.doc('Runs Query')
@@ -139,7 +139,7 @@ class RunSearchQuery(Resource):
         """
         Submits query
 
-        Payload in JSON will have genelist which is a list of genes and databaselist which is a list of networkset names corresponding to NDEx network sets. These networks must be normalized such that “n” is gene name, “r” is gene id and “a” is alternate ids
+        Payload in JSON will have sourceList which is a list of genes and sourceList which is a list of networkset names corresponding to NDEx network sets. These networks must be normalized such that “n” is gene name, “r” is gene id and “a” is alternate ids
         Initially only signor, PID, wikipathway are supported.
 
 
@@ -210,11 +210,55 @@ class BaseStatus(object):
             return
 
 
+FULL_STATUS = BASE_STATUS
+FULL_STATUS['numberOfHits'] = fields.Integer(description='Number of hits being # of networks total')
+FULL_STATUS['start'] = fields.Integer(description='Value of start parameter passed in')
+FULL_STATUS['size'] = fields.Integer(description='Value of size passed in')
+FULL_STATUS['source'] = fields.List(fields.String(),
+                                    description='List of sources to restrict results by')
+FULL_STATUS['query'] = fields.List(fields.String(),
+                                   description='Original query passed in')
+
+result = api.model('SourceQueryResult', {
+    'networkUUID': fields.String(description='uuid of network'),
+    'sourceName': fields.String(description='name of source'),
+    'rank': fields.Integer(description='Rank of result (lower # is better)'),
+    'hitGenes': fields.List(fields.String(description='Gene that hit'))
+})
+
+base_sqr = {
+    'sourceUUID': fields.String(description='UUID of source'),
+    'sourceName': fields.String(description='Name of source'),
+    'status': fields.String(description='One of the following <submitted | processing | complete | failed>',
+                            example='complete'),
+    'message': fields.String(description='Any message about query, such as an error message'),
+    'progress': fields.Integer(description='% completion, will be a value in range of 0-100',
+                               example=100),
+    'wallTime': fields.Integer(description='Time in milliseconds query took to run',
+                               example=341),
+    'numberOfHits': fields.Integer(description='Number of hits being # of networks total'),
+    'sourceRank': fields.Integer(description='Rank of source (lower # is better)')}
+
+import copy
+full_sqr = copy.deepcopy(base_sqr)
+
+full_sqr['results'] = fields.List(fields.Nested(result))
+
+sourceresults = api.model('SourceQueryResults', full_sqr)
+
+sourcenoresults = api.model('SourceQueryNoResults', base_sqr)
+
+FULL_STATUS_NORES = copy.deepcopy(FULL_STATUS)
+
+FULL_STATUS['sources'] = fields.List(fields.Nested(sourceresults))
+
+FULL_STATUS_NORES['sources'] = fields.List(fields.Nested(sourcenoresults))
+
 @ns.route('/<string:id>/status', strict_slashes=False)
-class GetTaskStatus(Resource):
+class GetQueryStatus(Resource):
     """Class doc here"""
 
-    task_status_resp = api.model('QueryStatus', BASE_STATUS)
+    task_status_resp = api.model('QueryStatus', FULL_STATUS_NORES)
 
     @api.response(200, 'Success', task_status_resp)
     @api.response(410, 'Task not found')
@@ -234,24 +278,7 @@ class GetTaskStatus(Resource):
             er.description = 'more detailed error heehe'
             return marshal(er, ERROR_RESP), 500
 
-        return marshal(bs, GetTaskStatus.task_status_resp), 200
-
-
-FULL_STATUS = BASE_STATUS
-FULL_STATUS['numberOfHits'] = fields.Integer(description='number of hits being # of networks total')
-FULL_STATUS['start'] = fields.Integer(description='Value of start parameter passed in')
-FULL_STATUS['size'] = fields.Integer(description='Value of size passed in')
-FULL_STATUS['query'] = fields.List(fields.String(),
-                                   description='Original query passed in')
-
-result = api.model('QueryResult', {
-    'networkUUID': fields.String(description='uuid of network'),
-    'databaseUUID': fields.String(description='uuid of database'),
-    'databaseName': fields.String(description='name of database'),
-    'rank': fields.Integer(description='Rank of result (lower # is better)'),
-    'hitGenes': fields.List(fields.String(description='Gene that hit'))
-})
-FULL_STATUS['results'] = fields.List(fields.Nested(result))
+        return marshal(bs, GetQueryStatus.task_status_resp), 200
 
 
 class SingleResult(object):
@@ -259,19 +286,19 @@ class SingleResult(object):
     Single result
     """
     networkuuid = ''
-    databaseuuid = ''
-    databasename = ''
-    pvalue = 0
+    sourceuuid = ''
+    sourcename = ''
+    rank = 0
     hitgenes = ['']
 
-    def __init__(self):
+    def __init__(self, rank):
         """
         Constructor
         """
         self.networkuuid = str(uuid.uuid4())
-        self.databaseuuid = str(uuid.uuid4())
-        self.databasename = random.choice(['signor', 'pid', 'wikipathways'])
-        self.pvalue = random.random()
+        self.sourceuuid = str(uuid.uuid4())
+        self.sourcename = random.choice(['enrichment', 'keyword', 'interactome'])
+        self.rank = rank
         self.hitgenes = ['hi']
 
 
@@ -300,7 +327,7 @@ class FullResult(BaseStatus):
             return
 
         for x in range(self.number_of_hits - 1):
-            self.results.append(SingleResult())
+            self.results.append(SingleResult(x))
 
 
 @ns.route('/<string:id>', strict_slashes=False)
@@ -315,6 +342,10 @@ class GetQueryResult(Resource):
                             default=0)
     get_params.add_argument('size', type=int, location='args',
                             help='Number of results to return, 0 for all', default=0)
+    get_params.add_argument('source', type=str, location='args',
+                            help='Comma delimited list of sources to return results from ' 
+                                 'For start/size argument, results will be returned in '
+                                 'order of listed sources or by order in original query')
 
     @api.response(200, 'Successful response from server', fulltask_status_resp)
     @api.response(410, 'Task not found')
@@ -323,10 +354,10 @@ class GetQueryResult(Resource):
     @api.expect(get_params)
     def get(self, id):
         """
-        Gets result of query
+        Gets result of query. This endpoint will return partial results as they
+        become available. Only after status is failed|complete are all results shown
 
-        NOTE: For incomplete/failed jobs only Status, message, progress, and walltime will
-        be returned in JSON
+
         """
         params = GetQueryResult.get_params.parse_args(request, strict=True)
         fs = FullResult(id, params['start'], params['size'])
@@ -369,8 +400,8 @@ class GetResultAsCX(Resource):
     """Gets result of query overlayed on network as CX
     """
     get_params = reqparse.RequestParser()
-    get_params.add_argument('databaseUUID', type=str, location='args',
-                            help='UUID of database', required=True)
+    get_params.add_argument('sourceUUID', type=str, location='args',
+                            help='UUID of source', required=True)
     get_params.add_argument('networkUUID', type=str, location='args',
                             help='UUID of network ', required=True)
 
@@ -381,7 +412,7 @@ class GetResultAsCX(Resource):
     @api.expect(get_params)
     def get(self, id):
         """
-        Gets result of from a specific database and network as CX
+        Gets result of from a specific source and network as CX
 
         NOTE: For incomplete/failed 500 will be returned
         """
@@ -403,9 +434,9 @@ class GetResultAsCX(Resource):
         return resp
 
 
-class DatabaseResults(object):
+class SourceResults(object):
     """
-    database results
+    source results
     """
     results = []
     status_code = 200
@@ -419,26 +450,35 @@ class DatabaseResults(object):
             return
         self.results = []
         self.results.append({'uuid': '89a90a24-2fa8-4a57-ae4b-7c30a180e8e6',
-                            'description': 'The SIGnaling Network Open Resource organizes and stores signaling information published in the scientific literature in a structured format. The core of this project is a collection of more than 11000',
-                            'name': 'signor',
-                            'numberOfNetworks': 48})
+                            'description': 'Enrichment service that uses NDEx networks as the source of identifier sets',
+                            'name': 'enrichment',
+                            'numberOfNetworks': 48,
+                            'status': 'ok',
+                            'endPoint': 'http://localhost',
+                            'version': '0.4.5'})
 
         self.results.append({'uuid': 'e508cf31-79af-463e-b8b6-ff34c87e1734',
                              'description': 'BioGRID is an online interaction repository with data compiled through comprehensive curation efforts. All interaction data are freely provided through their search index and available via download in a wide variety of standardized formats. This account is maintained by the NDEx Team and updated monthly with the latest released data.',
                              'name': 'biogrid',
-                             'numberOfNetworks': 14})
+                             'numberOfNetworks': 14,
+                             'status': 'ok',
+                             'endPoint': 'http://localhost',
+                             'version': '0.4.5'})
 
 
-@ns.route('/database', strict_slashes=False)
+@ns.route('/source', strict_slashes=False)
 class GetDatabases(Resource):
 
-    dbres = api.model('DatabaseResult', {
-        'uuid': fields.String(description='UUID of database'),
-        'description': fields.String(description='Description of database'),
-        'name': fields.String(description='Name of database'),
-        'numberOfNetworks': fields.Integer(description='Number of networks in database')
+    dbres = api.model('Source', {
+        'uuid': fields.String(description='UUID of source'),
+        'description': fields.String(description='Description of source'),
+        'name': fields.String(description='Name of source'),
+        'numberOfNetworks': fields.Integer(description='Number of networks in source'),
+        'status': fields.String(description='ok if service is up, or error if down'),
+        'endPoint': fields.Url(description='REST endpoint for service'),
+        'version': fields.String(description='Version of service')
     })
-    dblist = api.model('DatabaseResults', {
+    dblist = api.model('Sources', {
         'results': fields.List(fields.Nested(dbres)),
     })
 
@@ -448,14 +488,14 @@ class GetDatabases(Resource):
     @api.response(500, 'Internal server error', ERROR_RESP)
     def get(self):
         """
-        Gets list of databases that can be queried
+        Gets list of sources that can be queried
 
         Result in JSON which is a list of objects with uuid and display
-        name for database that can be queried.
+        name for source that can be queried.
 
 
         """
-        dr = DatabaseResults()
+        dr = SourceResults()
 
         if dr.status_code is 500:
             er = ErrorResponse()
