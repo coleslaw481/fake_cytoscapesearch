@@ -11,6 +11,7 @@ from datetime import datetime
 import random
 import os
 import uuid
+import copy
 import flask
 from flask import Flask, jsonify, request
 from flask_restplus import reqparse, Api, Resource, fields, marshal
@@ -54,12 +55,15 @@ api = Api(app, version=str(__version__),
           title='Fake Cytoscape Search ',
           description=desc, example='put example here')
 
+# enable rate limiting
 limiter = Limiter(
     app,
     key_func=get_remote_address,
     default_limits=[app.config[DEFAULT_RATE_LIMIT_KEY]],
     headers_enabled=True
 )
+
+# add rate limiting logger to the regular app logger
 for handler in app.logger.handlers:
     limiter.logger.addHandler(handler)
 
@@ -167,15 +171,6 @@ class RunSearchQuery(Resource):
             return marshal(er, ERROR_RESP), 500
 
 
-BASE_STATUS = {'status': fields.String(description='One of the following <submitted | processing | complete | failed>',
-                                       example='complete'),
-               'message': fields.String(description='Any message about query, such as an error message'),
-               'progress': fields.Integer(description='% completion, will be a value in range of 0-100',
-                                          example=100),
-               'wallTime': fields.Integer(description='Time in milliseconds query took to run',
-                                          example=341)}
-
-
 class BaseStatus(object):
     """
     Represents server status, which upon creation will randomly flip around in states
@@ -183,7 +178,12 @@ class BaseStatus(object):
     status = 'submitted'
     message = ''
     progress = 50
-    walltime = 1000
+    wallTime = 1000
+    numberOfHits = 0
+    start = 0
+    size = 0
+    inputSourceList = ['']
+    query = ['']
 
     def __init__(self, id):
         """Constructor
@@ -191,42 +191,44 @@ class BaseStatus(object):
         if id is not None:
             self.message = 'id => ' + id + ' '
 
+        self.inputSourceList = random.sample(['enrichment', 'keyword', 'interactome'],
+                                             random.randint(1, 3))
         self.status = random.choice(['submitted', 'processing', 'complete', 'failed'])
         if self.status is 'complete' or self.status is 'failed':
             self.progress = 100
-            self.walltime = random.randint(0, 100000)
+            self.wallTime = random.randint(0, 100000)
             self.message = self.message + random.choice(['okay', 'some warning', 'have a nice day'])
             return
 
         if self.status is 'submitted':
             self.progress = 0
-            self.walltime = 0
+            self.wallTime = 0
             return
 
         if self.status is 'processing':
             self.progress = random.randint(0, 99)
-            self.walltime = 0
+            self.wallTime = 0
             self.message = self.message + random.choice(['hi', 'how', ''])
             return
 
 
-FULL_STATUS = BASE_STATUS
-FULL_STATUS['numberOfHits'] = fields.Integer(description='Number of hits being # of networks total')
-FULL_STATUS['start'] = fields.Integer(description='Value of start parameter passed in')
-FULL_STATUS['size'] = fields.Integer(description='Value of size passed in')
-FULL_STATUS['source'] = fields.List(fields.String(),
-                                    description='List of sources to restrict results by')
-FULL_STATUS['query'] = fields.List(fields.String(),
-                                   description='Original query passed in')
+FULL_STATUS = {'status': fields.String(description='One of the following <submitted | processing | complete | failed>',
+                                       example='complete'),
+               'message': fields.String(description='Any message about query, such as an error message'),
+               'progress': fields.Integer(description='% completion, will be a value in range of 0-100',
+                                          example=100),
+               'wallTime': fields.Integer(description='Time in milliseconds query took to run',
+                                          example=341),
+               'numberOfHits': fields.Integer(description='Number of hits being # of networks total'),
+               'start': fields.Integer(description='Value of start parameter passed in'),
+               'size': fields.Integer(description='Value of size passed in'),
+               'inputSourceList': fields.List(fields.String(),
+                                              description='List of sources to restrict results by'),
+               'query': fields.List(fields.String(),
+                                   description='Original query passed in')}
 
-result = api.model('SourceQueryResult', {
-    'networkUUID': fields.String(description='uuid of network'),
-    'sourceName': fields.String(description='name of source'),
-    'rank': fields.Integer(description='Rank of result (lower # is better)'),
-    'hitGenes': fields.List(fields.String(description='Gene that hit'))
-})
 
-base_sqr = {
+BASE_SQR = {
     'sourceUUID': fields.String(description='UUID of source'),
     'sourceName': fields.String(description='Name of source'),
     'status': fields.String(description='One of the following <submitted | processing | complete | failed>',
@@ -239,20 +241,83 @@ base_sqr = {
     'numberOfHits': fields.Integer(description='Number of hits being # of networks total'),
     'sourceRank': fields.Integer(description='Rank of source (lower # is better)')}
 
-import copy
-full_sqr = copy.deepcopy(base_sqr)
+full_sqr = copy.deepcopy(BASE_SQR)
 
-full_sqr['results'] = fields.List(fields.Nested(result))
+SQR_HIT = api.model('SourceQueryResult', {
+    'networkUUID': fields.String(description='uuid of network'),
+    'rank': fields.Integer(description='Rank of result (lower # is better)'),
+    'hitGenes': fields.List(fields.String(description='Gene that hit'))
+})
+
+full_sqr['results'] = fields.List(fields.Nested(SQR_HIT))
 
 sourceresults = api.model('SourceQueryResults', full_sqr)
 
-sourcenoresults = api.model('SourceQueryNoResults', base_sqr)
+sourcenoresults = api.model('SourceQueryNoResults', BASE_SQR)
 
 FULL_STATUS_NORES = copy.deepcopy(FULL_STATUS)
 
+FULL_STATUS_NORES['sources'] = fields.List(fields.Nested(sourcenoresults))
+
 FULL_STATUS['sources'] = fields.List(fields.Nested(sourceresults))
 
-FULL_STATUS_NORES['sources'] = fields.List(fields.Nested(sourcenoresults))
+
+class SingleResult(object):
+    """
+    Single result
+    """
+    networkUUID = ''
+    sourceUUID = ''
+    rank = 0
+    hitGenes = ['']
+
+    def __init__(self, rank):
+        """
+        Constructor
+        """
+        self.networkUUID = str(uuid.uuid4())
+        self.sourceUUID = str(uuid.uuid4())
+        self.rank = rank
+        self.hitGenes = ['hi']
+
+
+class FullStatus(BaseStatus):
+    """
+    Just a summary of the result
+    """
+    sources = []
+
+    def __init__(self, id):
+        BaseStatus.__init__(self, id)
+
+
+class FullResultWithResults(FullStatus):
+    """
+    Result with hits
+    """
+
+    results = []
+    query = []
+    number_of_hits = 0
+    start = 0
+    size = 0
+    source = ''
+
+    def __init__(self, id, start, size):
+        FullStatus.__init__(self, id)
+
+        self.start = start
+        self.size = size
+        if self.status is 'failed' or self.status is 'processing' or self.status is 'submitted':
+            return
+
+        # processing is completed so lets randomly generate results
+        self.number_of_hits = random.randint(0, 100)
+        if self.number_of_hits is 0:
+            return
+
+        for x in range(self.number_of_hits - 1):
+            self.results.append(SingleResult(x))
 
 @ns.route('/<string:id>/status', strict_slashes=False)
 class GetQueryStatus(Resource):
@@ -271,64 +336,14 @@ class GetQueryStatus(Resource):
         This lets caller get status without getting the full result back
 
         """
-        bs = BaseStatus(id)
-        if bs.status is 'failed':
+        fs = FullStatus(id)
+        if fs.status is 'failed':
             er = ErrorResponse()
             er.message = 'There was some error'
             er.description = 'more detailed error heehe'
             return marshal(er, ERROR_RESP), 500
 
-        return marshal(bs, GetQueryStatus.task_status_resp), 200
-
-
-class SingleResult(object):
-    """
-    Single result
-    """
-    networkuuid = ''
-    sourceuuid = ''
-    sourcename = ''
-    rank = 0
-    hitgenes = ['']
-
-    def __init__(self, rank):
-        """
-        Constructor
-        """
-        self.networkuuid = str(uuid.uuid4())
-        self.sourceuuid = str(uuid.uuid4())
-        self.sourcename = random.choice(['enrichment', 'keyword', 'interactome'])
-        self.rank = rank
-        self.hitgenes = ['hi']
-
-
-class FullResult(BaseStatus):
-    """
-    Full result
-    """
-
-    results = []
-    query = []
-    number_of_hits = 0
-    start = 0
-    size = 0
-    source = ''
-
-    def __init__(self, id, start, size):
-        BaseStatus.__init__(self, id)
-
-        self.start = start
-        self.size = size
-        if self.status is 'failed' or self.status is 'processing' or self.status is 'submitted':
-            return
-
-        # processing is completed so lets randomly generate results
-        self.number_of_hits = random.randint(0, 100)
-        if self.number_of_hits is 0:
-            return
-
-        for x in range(self.number_of_hits - 1):
-            self.results.append(SingleResult(x))
+        return marshal(fs, GetQueryStatus.task_status_resp), 200
 
 
 @ns.route('/<string:id>', strict_slashes=False)
