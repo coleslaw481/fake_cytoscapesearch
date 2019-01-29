@@ -100,17 +100,19 @@ RATE_LIMIT_HEADERS = {
 class ErrorResponse(object):
     """Error response
     """
-    errorCode = ''
-    message = ''
-    description = ''
-    stackTrace = ''
-    threadId = ''
-    timeStamp = ''
+    
 
     def __init__(self):
         """
         Constructor
         """
+        self.errorCode = ''
+        self.message = ''
+        self.description = ''
+        self.stackTrace = ''
+        self.threadId = ''
+        self.timeStamp = ''
+
         dt = datetime.utcnow()
         self.timeStamp = dt.strftime('%Y-%m-%dT%H:%M.%s')
 
@@ -175,25 +177,26 @@ class BaseStatus(object):
     """
     Represents server status, which upon creation will randomly flip around in states
     """
-    status = 'submitted'
-    message = ''
-    progress = 50
-    wallTime = 1000
-    numberOfHits = 0
-    start = 0
-    size = 0
-    inputSourceList = ['']
-    query = ['']
 
     def __init__(self, id):
         """Constructor
         """
+        self.message = ''
+        self.progress = 50
+        self.wallTime = 1000
+        self.numberOfHits = random.randint([0, 10])
+        self.start = 0
+        self.size = 0
+        self.inputSourceList = ['']
+        self.query = ['']
+        
         if id is not None:
             self.message = 'id => ' + id + ' '
 
         self.inputSourceList = random.sample(['enrichment', 'keyword', 'interactome'],
                                              random.randint(1, 3))
         self.status = random.choice(['submitted', 'processing', 'complete', 'failed'])
+        self.query = ["ATK1", "EXAMPLE"]
         if self.status is 'complete' or self.status is 'failed':
             self.progress = 100
             self.wallTime = random.randint(0, 100000)
@@ -245,6 +248,8 @@ full_sqr = copy.deepcopy(BASE_SQR)
 
 SQR_HIT = api.model('SourceQueryResult', {
     'networkUUID': fields.String(description='uuid of network'),
+    'description': fields.String(description='Description of network'),
+    'percentOverlap': fields.Integer(description='Percentage of overlap with input query gene list'),
     'rank': fields.Integer(description='Rank of result (lower # is better)'),
     'hitGenes': fields.List(fields.String(description='Gene that hit'))
 })
@@ -266,57 +271,68 @@ class SingleResult(object):
     """
     Single result
     """
-    networkUUID = ''
-    sourceUUID = ''
-    rank = 0
-    hitGenes = ['']
 
     def __init__(self, rank):
         """
         Constructor
         """
         self.networkUUID = str(uuid.uuid4())
-        self.sourceUUID = str(uuid.uuid4())
         self.rank = rank
-        self.hitGenes = ['hi']
+        self.percentOverlap = random.randint(0, 100)
+        self.description = random.choice(['Good one', 'Bad'])
+        self.hitGenes = random.choice(['hi', 'how', 'are', 'you'])
 
 
-class FullStatus(BaseStatus):
+class DetailedStatus(BaseStatus):
     """
     Just a summary of the result
     """
-    sources = []
 
-    def __init__(self, id):
+    def __init__(self, id, results=False):
         BaseStatus.__init__(self, id)
 
+        if results:
+            self.sources = [SourceInfoWithResults() for i in range(random.randint(0, 5))]
+        else:
+            self.sources = [SourceInfo() for i in range(random.randint(0, 5))]
+    
 
-class FullResultWithResults(FullStatus):
+
+
+class SourceInfo(object):
     """
-    Result with hits
+    Source information
     """
 
-    results = []
-    query = []
-    number_of_hits = 0
-    start = 0
-    size = 0
-    source = ''
-
-    def __init__(self, id, start, size):
-        FullStatus.__init__(self, id)
-
-        self.start = start
-        self.size = size
+    def __init__(self):
+        self.status = random.choice(['submitted', 'processing', 'complete', 'failed'])
+        self.message = ''
+        self.progress = 0
+        self.wallTime = 0
+        self.numberOfHits = 0
+        self.sourceRank = 0
+        self.sourceName = random.choice(['source', 'sauce', 'sars'])
+        self.sourceUUID = str(uuid.uuid4())
         if self.status is 'failed' or self.status is 'processing' or self.status is 'submitted':
             return
 
         # processing is completed so lets randomly generate results
-        self.number_of_hits = random.randint(0, 100)
-        if self.number_of_hits is 0:
+        self.numberOfHits = random.randint(0, 100)
+        if self.numberOfHits is 0:
             return
 
-        for x in range(self.number_of_hits - 1):
+        
+
+class SourceInfoWithResults(SourceInfo):
+    """
+    Source information with list of results
+    """
+    
+    def __init__(self):
+        SourceInfo.__init__(self)
+
+        self.results = []
+        for x in range(self.numberOfHits):
             self.results.append(SingleResult(x))
 
 @ns.route('/<string:id>/status', strict_slashes=False)
@@ -336,7 +352,7 @@ class GetQueryStatus(Resource):
         This lets caller get status without getting the full result back
 
         """
-        fs = FullStatus(id)
+        fs = DetailedStatus(id)
         if fs.status is 'failed':
             er = ErrorResponse()
             er.message = 'There was some error'
@@ -376,7 +392,7 @@ class GetQueryResult(Resource):
 
         """
         params = GetQueryResult.get_params.parse_args(request, strict=True)
-        fs = FullResult(id, params['start'], params['size'])
+        fs = DetailedStatus(id, results=True)
         if fs.status is 'failed':
             er = ErrorResponse()
             er.message = fs.message
@@ -450,17 +466,17 @@ class GetResultAsCX(Resource):
         return resp
 
 
-class SourceResults(object):
+class InputSourceResults(object):
     """
     source results
     """
-    results = []
-    status_code = 200
+    
 
     def __init__(self):
         """
         Constructor
         """
+
         self.status_code = random.choice([200, 500])
         if self.status_code is 500:
             return
@@ -511,7 +527,7 @@ class GetDatabases(Resource):
 
 
         """
-        dr = SourceResults()
+        dr = InputSourceResults()
 
         if dr.status_code is 500:
             er = ErrorResponse()
@@ -525,16 +541,18 @@ class GetDatabases(Resource):
 class ServerStatus(object):
     """Represents status of server
     """
-    status = 'ok'
-    message = ''
-    pcdiskfull = 0
-    load = [0,0,0]
-    queries = [0,0,0,0,0]
-    rest_version = __version__
+    
 
     def __init__(self):
         """Constructor
         """
+
+        self.status = 'ok'
+        self.message = ''
+        self.pcdiskfull = 0
+        self.load = [0, 0, 0]
+        self.queries = [0, 0, 0, 0, 0]
+        self.rest_version = __version__
 
         self.pcdiskfull = random.randint(0, 100)
         if self.pcdiskfull is 100:
