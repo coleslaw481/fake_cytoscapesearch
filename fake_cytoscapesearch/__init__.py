@@ -312,6 +312,7 @@ class FullResult(BaseStatus):
     number_of_hits = 0
     start = 0
     size = 0
+    source = ''
 
     def __init__(self, id, start, size):
         BaseStatus.__init__(self, id)
