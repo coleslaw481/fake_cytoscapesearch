@@ -184,7 +184,7 @@ class BaseStatus(object):
         self.message = ''
         self.progress = 50
         self.wallTime = 1000
-        self.numberOfHits = random.randint([0, 10])
+        self.numberOfHits = random.randint(0, 10)
         self.start = 0
         self.size = 0
         self.inputSourceList = ['']
