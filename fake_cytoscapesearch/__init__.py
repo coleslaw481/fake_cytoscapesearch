@@ -527,9 +527,11 @@ class ServerStatus(object):
         else:
             self.status = random.choice(['ok', 'error'])
 
-        self.load[0] = random.random()*10.0
-        self.load[1] = random.random()*10.0
-        self.load[2] = random.random()*10.0
+        loadavg = os.getloadavg()
+
+        self.load[0] = loadavg[0]
+        self.load[1] = loadavg[1]
+        self.load[2] = loadavg[2]
 
         self.queries[0] = random.randint(0, 500)
         self.queries[1] = self.queries[0] + random.randint(0, 500)
