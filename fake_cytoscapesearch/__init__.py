@@ -111,7 +111,7 @@ class ErrorResponse(object):
         self.timeStamp = dt.strftime('%Y-%m-%dT%H:%M.%s')
 
 
-@api.doc('Runs enrichment query')
+@api.doc('Runs query')
 @ns.route('/', strict_slashes=False)
 class RunSearchQuery(Resource):
     """
@@ -124,7 +124,7 @@ class RunSearchQuery(Resource):
                                 example=['brca1'], required=True),
         'databaseList': fields.List(fields.String,
                                     description='List of databases',
-                                    example=['signor', 'pid'], default=['signor'])
+                                    example=['enrichment:signor', 'interactome', 'keyword'], default=['enrichment:signor'])
     })
 
     @api.doc('Runs Query')
@@ -139,7 +139,7 @@ class RunSearchQuery(Resource):
         """
         Submits query
 
-        Payload in JSON will have genelist which is a list of genes and databaselist which is a list of networkset names corresponding to NDEx enrichment network sets. These networks must be normalized such that “n” is gene name, “r” is gene id and “a” is alternate ids
+        Payload in JSON will have genelist which is a list of genes and databaselist which is a list of networkset names corresponding to NDEx network sets. These networks must be normalized such that “n” is gene name, “r” is gene id and “a” is alternate ids
         Initially only signor, PID, wikipathway are supported.
 
 
@@ -222,7 +222,7 @@ class GetTaskStatus(Resource):
     @api.response(500, 'Internal server error', ERROR_RESP)
     def get(self, id):
         """
-        Gets status of enrichment query
+        Gets status of query
 
         This lets caller get status without getting the full result back
 
@@ -241,12 +241,14 @@ FULL_STATUS = BASE_STATUS
 FULL_STATUS['numberOfHits'] = fields.Integer(description='number of hits being # of networks total')
 FULL_STATUS['start'] = fields.Integer(description='Value of start parameter passed in')
 FULL_STATUS['size'] = fields.Integer(description='Value of size passed in')
+FULL_STATUS['query'] = fields.List(fields.String(),
+                                   description='Original query passed in')
 
 result = api.model('QueryResult', {
     'networkUUID': fields.String(description='uuid of network'),
     'databaseUUID': fields.String(description='uuid of database'),
     'databaseName': fields.String(description='name of database'),
-    'pValue': fields.Float(description='pvalue of enrichment'),
+    'rank': fields.Integer(description='Rank of result (lower # is better)'),
     'hitGenes': fields.List(fields.String(description='Gene that hit'))
 })
 FULL_STATUS['results'] = fields.List(fields.Nested(result))
@@ -279,6 +281,7 @@ class FullResult(BaseStatus):
     """
 
     results = []
+    query = []
     number_of_hits = 0
     start = 0
     size = 0
@@ -320,7 +323,7 @@ class GetQueryResult(Resource):
     @api.expect(get_params)
     def get(self, id):
         """
-        Gets result of enrichment
+        Gets result of query
 
         NOTE: For incomplete/failed jobs only Status, message, progress, and walltime will
         be returned in JSON
@@ -378,7 +381,7 @@ class GetResultAsCX(Resource):
     @api.expect(get_params)
     def get(self, id):
         """
-        Gets result of enrichment from a specific database and network as CX
+        Gets result of from a specific database and network as CX
 
         NOTE: For incomplete/failed 500 will be returned
         """
@@ -445,7 +448,7 @@ class GetDatabases(Resource):
     @api.response(500, 'Internal server error', ERROR_RESP)
     def get(self):
         """
-        Gets list of databases that can be queried for enrichment
+        Gets list of databases that can be queried
 
         Result in JSON which is a list of objects with uuid and display
         name for database that can be queried.
