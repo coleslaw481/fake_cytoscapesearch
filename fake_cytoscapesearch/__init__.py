@@ -280,7 +280,7 @@ class SingleResult(object):
         self.rank = rank
         self.percentOverlap = random.randint(0, 100)
         self.description = random.choice(['Good one', 'Bad'])
-        self.hitGenes = random.choice(['hi', 'how', 'are', 'you'])
+        self.hitGenes = random.sample(['hi', 'how', 'are', 'you'], 2)
 
 
 class DetailedStatus(BaseStatus):
