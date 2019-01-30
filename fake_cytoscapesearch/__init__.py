@@ -27,6 +27,7 @@ desc = """Fake cytoscape integrated search service
  **NOTE:** This service is experimental. The interface is subject to change.
 
 https://docs.google.com/document/d/1Z1KCs--XFWQc4o22RxsEaB5nvCotH1duX9cj-OV1zcM/edit 
+
 """ # noqa
 
 
@@ -295,8 +296,6 @@ class DetailedStatus(BaseStatus):
             self.sources = [SourceInfoWithResults() for i in range(random.randint(0, 5))]
         else:
             self.sources = [SourceInfo() for i in range(random.randint(0, 5))]
-    
-
 
 
 class SourceInfo(object):
@@ -321,7 +320,6 @@ class SourceInfo(object):
         if self.numberOfHits is 0:
             return
 
-        
 
 class SourceInfoWithResults(SourceInfo):
     """
@@ -334,6 +332,7 @@ class SourceInfoWithResults(SourceInfo):
         self.results = []
         for x in range(self.numberOfHits):
             self.results.append(SingleResult(x))
+
 
 @ns.route('/<string:id>/status', strict_slashes=False)
 class GetQueryStatus(Resource):
@@ -470,8 +469,6 @@ class InputSourceResults(object):
     """
     source results
     """
-    
-
     def __init__(self):
         """
         Constructor
@@ -490,12 +487,21 @@ class InputSourceResults(object):
                             'version': '0.4.5'})
 
         self.results.append({'uuid': 'e508cf31-79af-463e-b8b6-ff34c87e1734',
-                             'description': 'BioGRID is an online interaction repository with data compiled through comprehensive curation efforts. All interaction data are freely provided through their search index and available via download in a wide variety of standardized formats. This account is maintained by the NDEx Team and updated monthly with the latest released data.',
-                             'name': 'biogrid',
-                             'numberOfNetworks': 14,
+                             'description': 'Performs keyword search on NDEx, an open-source framework where scientists and organizations can share, store, manipulate, and publish biological network knowledge.',
+                             'name': 'keyword',
+                             'numberOfNetworks': 3200,
                              'status': 'ok',
-                             'endPoint': 'http://localhost',
-                             'version': '0.4.5'})
+                             'endPoint': 'http://ndexbio.org/v2/rest',
+                             'version': '2.4.0'})
+
+        self.results.append(({'uuid': 'bbfcc69c-98ce-4757-99ec-138a7290f3a5',
+                              'description': 'Performs neighborhood search on subset of NDEx, an open-source framework where scientists and organizations can share, store, manipulate, and publish biological network knowledge.',
+                              'name': 'interactome',
+                              'numberOfNetworks': 200,
+                              'status': 'ok',
+                              'endPoint': 'http://ndexbio.org/v2/rest',
+                              'version': '1.0'
+                              }))
 
 
 @ns.route('/source', strict_slashes=False)
