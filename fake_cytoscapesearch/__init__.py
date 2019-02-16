@@ -156,7 +156,8 @@ class RunSearchQuery(Resource):
         app.logger.debug("Post received")
 
         try:
-            if random.choice(['success', 'fail']) is 'fail':
+            if random.choice(['success', 'success', 'success',
+                              'success', 'success', 'fail']) is 'fail':
                 raise Exception('something failed')
 
             res = str(uuid.uuid4())
@@ -196,7 +197,10 @@ class BaseStatus(object):
 
         self.inputSourceList = random.sample(['enrichment', 'keyword', 'interactome'],
                                              random.randint(1, 3))
-        self.status = random.choice(['submitted', 'processing', 'complete', 'failed'])
+        self.status = random.choice(['submitted', 'processing', 'complete',
+                                     'submitted', 'processing', 'complete',
+                                     'submitted', 'processing', 'complete',
+                                     'failed'])
         self.query = ["ATK1", "EXAMPLE"]
         if self.status is 'complete' or self.status is 'failed':
             self.progress = 100
@@ -243,7 +247,8 @@ BASE_SQR = {
     'wallTime': fields.Integer(description='Time in milliseconds query took to run',
                                example=341),
     'numberOfHits': fields.Integer(description='Number of hits being # of networks total'),
-    'sourceRank': fields.Integer(description='Rank of source (lower # is better)')}
+    'sourceRank': fields.Integer(description='Rank of source (lower # is better)')
+}
 
 full_sqr = copy.deepcopy(BASE_SQR)
 
@@ -251,6 +256,8 @@ SQR_HIT = api.model('SourceQueryResult', {
     'networkUUID': fields.String(description='uuid of network'),
     'description': fields.String(description='Description of network'),
     'percentOverlap': fields.Integer(description='Percentage of overlap with input query gene list'),
+    'nodes': fields.Integer(description='Number of nodes in network'),
+    'edges': fields.Integer(description='Number of edges in network'),
     'rank': fields.Integer(description='Rank of result (lower # is better)'),
     'hitGenes': fields.List(fields.String(description='Gene that hit'))
 })
@@ -279,6 +286,8 @@ class SingleResult(object):
         """
         self.networkUUID = str(uuid.uuid4())
         self.rank = rank
+        self.nodes = random.randint(1, 1000)
+        self.edges = random.randint(0, 1000)
         self.percentOverlap = random.randint(0, 100)
         self.description = random.choice(['Good one', 'Bad'])
         self.hitGenes = random.sample(['hi', 'how', 'are', 'you'], 2)
@@ -304,7 +313,10 @@ class SourceInfo(object):
     """
 
     def __init__(self):
-        self.status = random.choice(['submitted', 'processing', 'complete', 'failed'])
+        self.status = random.choice(['submitted', 'processing', 'complete',
+                                     'submitted', 'processing', 'complete',
+                                     'submitted', 'processing', 'complete',
+                                     'failed'])
         self.message = ''
         self.progress = 0
         self.wallTime = 0
@@ -409,7 +421,11 @@ class GetQueryResult(Resource):
         """
         Deletes task associated with {id} passed in
         """
-        s = random.choice([200, 400, 500])
+        s = random.choice([200, 200,
+                           200, 200,
+                           200, 200,
+                           400, 400,
+                           500])
         if s is 200:
             resp = flask.make_response()
             resp.status_code = s
@@ -447,7 +463,11 @@ class GetResultAsCX(Resource):
 
         NOTE: For incomplete/failed 500 will be returned
         """
-        s_code = random.choice([200, 410, 500])
+        s_code = random.choice([200, 200,
+                                200, 200,
+                                200, 200,
+                                410, 410,
+                                500])
 
         if s_code is 410:
             resp = flask.make_response()
@@ -474,7 +494,9 @@ class InputSourceResults(object):
         Constructor
         """
 
-        self.status_code = random.choice([200, 500])
+        self.status_code = random.choice([200, 200, 200, 200, 200,
+                                          200, 200, 200, 200, 200,
+                                          500])
         if self.status_code is 500:
             return
         self.results = []
@@ -547,8 +569,6 @@ class GetDatabases(Resource):
 class ServerStatus(object):
     """Represents status of server
     """
-    
-
     def __init__(self):
         """Constructor
         """
@@ -607,7 +627,9 @@ class SystemStatus(Resource):
         Gets status of service
 
         """
-        s_code = random.choice([200, 500])
+        s_code = random.choice([200, 200, 200,
+                                200, 200, 200,
+                                500])
 
         if s_code is 500:
             er = ErrorResponse()
