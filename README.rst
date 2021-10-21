@@ -1,6 +1,11 @@
-===========
+
+
+
+NOTE: This has been superseded by  `ndexsearch-rest <https://github.com/cytoscape/ndexsearch-rest>`__
+==================================================================================================================
+
 fake_cytoscapesearch
-===========
+========================
 
 
 .. image:: https://img.shields.io/pypi/v/fake_cytoscapesearch.svg
@@ -8,8 +13,6 @@ fake_cytoscapesearch
 
 .. image:: https://img.shields.io/travis/coleslaw481/fake_cytoscapesearch.svg
         :target: https://travis-ci.org/coleslaw481/fake_cytoscapesearch
-
-
 
 
 Fake Enrichment REST service
